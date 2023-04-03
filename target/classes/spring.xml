@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xmlns:mybatis-spring="http://mybatis.org/schema/mybatis-spring"
+	xsi:schemaLocation="http://mybatis.org/schema/mybatis-spring http://mybatis.org/schema/mybatis-spring-1.2.xsd
+		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.3.xsd
+		http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-4.3.xsd
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.3.xsd">
+
+	<context:component-scan base-package="cn.ybzy.shirodemo">
+		<context:exclude-filter type="annotation"  expression="org.springframework.stereotype.Controller"/>
+		<context:exclude-filter type="annotation"  expression="org.springframework.web.bind.annotation.ControllerAdvice"/>
+	</context:component-scan>
+	
+	<context:property-placeholder location="classpath:jdbc.properties"/>
+	<!-- 配置C3P0数据连接池 -->
+	<bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+		<property name="user" value="${jdbc.user}"></property>
+		<property name="password" value="${jdbc.password}"></property>
+		<property name="driverClass" value="${jdbc.driverClass}"></property>
+		<property name="jdbcUrl" value="${jdbc.jdbcUrl}"></property>
+		<property name="acquireIncrement" value="${jdbc.acquireIncrement}"></property>
+		<property name="initialPoolSize" value="${jdbc.initialPoolSize}"></property>
+		<property name="minPoolSize" value="${jdbc.minPoolSize}"></property>
+		<property name="maxPoolSize" value="${jdbc.maxPoolSize}"></property>
+		<property name="maxStatements" value="${jdbc.maxStatements}"></property>
+		<property name="maxStatementsPerConnection" value="${jdbc.maxStatementsPerConnection}"></property>
+	</bean>
+	
+	<!-- 事务配置 -->
+	<bean id="transactionManager"
+			class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+		<property name="dataSource" ref="dataSource"></property>
+	</bean>
+	
+	<!-- 配置事务属性 -->
+	<tx:advice id="txAdvice" transaction-manager="transactionManager">
+		<tx:attributes>
+			<tx:method name="get*" read-only="true"/>
+	  		<tx:method name="load*" read-only="true"/>
+			<tx:method name="find*" read-only="true"/>
+			<tx:method name="select*" read-only="true"/>
+			<tx:method name="*" read-only="false"/>
+		</tx:attributes>
+	</tx:advice>
+	
+	<!-- 配置事务的切入点 -->
+	<aop:config>
+		<aop:pointcut expression="execution(* cn.ybzy.shirodemo.service.*.*(..))" 
+				id="txPointcut"/>
+		<aop:advisor advice-ref="txAdvice" pointcut-ref="txPointcut"/>
+	</aop:config>
+	
+	<!-- 整合Mybatis -->
+	<bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+		<property name="dataSource" ref="dataSource"></property>
+		<property name="configLocation" value="classpath:mybatis.xml"></property>
+		<property name="mapperLocations" value="classpath:cn/ybzy/shirodemo/dao/*.xml"></property>
+	</bean>
+	
+	<mybatis-spring:scan base-package="cn.ybzy.shirodemo.dao"/>
+	
+	<!-- shiro的核心组件配置bean -->
+	<bean id="securityManager" class="org.apache.shiro.web.mgt.DefaultWebSecurityManager">
+        <property name="cacheManager" ref="cacheManager"/> <!-- 这里的缓存是realm缓存 -->
+        <property name="authenticator" ref="authenticator"></property>  <!--多个realm时的认证策略配置  -->
+        <!-- <property name="realm" ref="shiroRealm"></property> 单个Realm是用到-->
+         <property name="realms">                              <!--多个Realm是用到可以进入（ctrl+点击）进入realm所在的类查看有realm和realms属性  -->
+        	<list>
+        		<ref bean="weixinRealm"/>   <!-- 三个Realm都做认证，只要一个通过即可，认证按上下先后顺序来做的 -->
+        		<ref bean="qQRealm"/>
+        		<ref bean="shiroRealm"/>
+        	</list>
+        </property>
+        <property name="sessionManager" ref="sessionManager"></property>   <!-- shiro会话管理属性对象，关联sessionManager bean.  -->
+        <property name="rememberMeManager.cookie.maxAge" value="604800"></property><!-- 单位:s，604800是7天 -->
+    </bean>
+    
+    <bean id="cacheManager" class="org.apache.shiro.cache.ehcache.EhCacheManager">
+    	<property name="cacheManagerConfigFile" value="classpath:ehcache.xml"></property>
+    </bean>
+    <!-- ShiroRealm继承了AuthenticatingRealm.它的 credentialsMatcher属性我们要改我们自定的验证方式,而credentialsMatcher的一个实现类为HashedCredentialsMatcher-->
+    <bean id="shiroRealm" class="cn.ybzy.shirodemo.service.shiro.ShiroRealm">
+    	<property name="credentialsMatcher">
+    	   <bean class="cn.ybzy.shirodemo.service.MyCredentialsMatcher">
+    	      
+    	   </bean>
+    	</property>
+    </bean>
+    
+    <bean id="weixinRealm" class="cn.ybzy.shirodemo.service.shiro.WeixinRealm">
+    <property name="credentialsMatcher">
+    	   <bean class="cn.ybzy.shirodemo.service.MyCredentialsMatcher2">
+    	   </bean>
+    	</property>
+    </bean>
+    <bean id="qQRealm" class="cn.ybzy.shirodemo.service.shiro.QQRealm">
+       <property name="credentialsMatcher">
+    	   <bean class="cn.ybzy.shirodemo.service.MyCredentialsMatcher1">
+    	   </bean>
+    	</property>
+    </bean>
+    
+    <bean id="authenticator" class="org.apache.shiro.authc.pam.ModularRealmAuthenticator">
+         <property name="authenticationStrategy">
+            <bean class="org.apache.shiro.authc.pam.AllSuccessfulStrategy"></bean><!--全部通过认证策略  -->
+         </property>
+         <!-- <property name="realms">                              多个Realm是用到可以进入（ctrl+点击）进入realm所在的类查看有realm和realms属性 
+        	<list>
+        		<ref bean="weixinRealm"/>   三个Realm都做认证，只要一个通过即可，认证按上下先后顺序来做的
+        		<ref bean="qQRealm"/>
+        		<ref bean="shiroRealm"/>
+        	</list>
+        </property> -->
+    </bean>
+       <!--Shiro 会话管理关联类的一些属性配置  -->
+    <bean id="sessionManager" class="org.apache.shiro.web.session.mgt.DefaultWebSessionManager">
+       <property name="globalSessionTimeout" value="3000000"></property><!--设置会失效时间是多少毫秒后，该属性是DefaultWebSessionManager它的一个父类AbstractSessionManager中定义的-->
+    </bean>
+    
+    <!-- shiro的拦截规则 -->
+    <!-- 需要我们注意的知识点：这个bean的id值，必须是web.xml配置文件中的<filter-name>shiroFilter</filter-name> -->
+    <bean id="shiroFilter" class="org.apache.shiro.spring.web.ShiroFilterFactoryBean">
+        <property name="securityManager" ref="securityManager"/>
+        <property name="loginUrl" value="/login.html"/>  <!-- 登录的页面，没有登录的情况访问需要登录认证后才能访问的页面 -->
+        <property name="successUrl" value="/admin/main.html"/>  <!-- 登录成功以后，跳转到的页面 -->
+        <property name="unauthorizedUrl" value="/unauthorized.html"/> <!-- 登录成功以后，访问了要求有权限控制的页面，跳转的页面 -->
+         <property name="filterChainDefinitionMap" ref="filterChainDefinitionMap"></property>   <!-- 由bean工厂模式配置bean，设置拦截规则，但它会把权限的URL,标记保存到数据库表中，而不是如下面的写死了权根URL,标记 -->
+         <!--  <property name="filterChainDefinitions">  是设置拦截规则的
+            <value>
+				 url地址 = 拦截规则  ： anon:匿名-即所有网页都可该问，/**由小到大过滤后的所有的
+                /login.html = anon
+                /logout.html = logout    默认退出到web根目录'/'，要处理之 
+                 /admin/userlist.html = roles[user]   设置音通用户角色
+                 /admin/adduser.html = roles[admin]   设置超级管理员角色
+                /admin/userlist.html = perms[userlist]       设置权限标记,userlist为权限名 
+                /admin/adduser.html  = perms[adduser]        设置权限标记 ，adduser为权限名
+                /admin/** = authc
+                /** = anon          
+                authc：需要登录成功以后才能够方法的规则
+                	注意的知识点：规则是有顺序的，从上到下，拦截的范围，必须是从小到大
+            </value>
+        </property>  -->
+     </bean>
+     
+     <!-- 工厂模式配置bean,该bean返回Map对象 -->
+    <bean id="filterChainDefinitionMap" factory-bean="filterChainDefinitionMapFactory" factory-method="getfilterChainDefinitionMap"></bean>
+    <bean id="filterChainDefinitionMapFactory" class="cn.ybzy.shirodemo.service.shiro.FilterChainDefinitionMapFactory"></bean>
+   
+
+</beans>
